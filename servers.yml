@@ -1,0 +1,204 @@
+Description: >
+    Olamide Olajide / Udacity CloudFormation Project 2020
+
+
+Parameters:
+  EnvironmentName:
+      Description: Single Parameter that we are passing with the env name.
+      Type: String
+
+  myLocalIP:
+    Description: Please enter your local IP here. Use the format x.x.x.x/32
+    Type: String
+
+
+Outputs:
+  WebAppLB:
+    Description: A reference to the created VPC
+    Value: !Ref WebAppLB
+    Export:
+      Name: LoadBalancer
+
+  LoadBalancerUrl:
+    Description: The URL of the LoadBalancer
+    Value: !GetAtt WebAppLB.DNSName
+
+
+Resources:
+
+  LBSecgroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow http to our load balancer
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 80
+        ToPort: 80
+        CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+      - IpProtocol: tcp
+        FromPort: 80
+        ToPort: 80
+        CidrIp: 0.0.0.0/0
+      VpcId:
+        Fn::ImportValue:
+          !Sub "${EnvironmentName}-VPCID"
+
+  AdminSecGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security Group of Admin, to allow Admin ssh into jump-box
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp: !Ref myLocalIP
+      VpcId:
+        Fn::ImportValue:
+          !Sub "${EnvironmentName}-VPCID"
+
+  WebServerSecgroup:
+    #Udagram communicates on the default HTTP Port: 80, so your servers will need this inbound port open since you will use it with the Load Balancer and the Load Balancer Health Check. As for outbound, the servers will need unrestricted internet access to be able to download and update its software.
+    #I also allowed port 22 to allow me SSH from a bastion host from the public subnet
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow http to our hosts and ssh from local only
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 80
+        ToPort: 80
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        SourceSecurityGroupId: !GetAtt AdminSecGroup.GroupId
+      SecurityGroupEgress:
+      - IpProtocol: tcp
+        FromPort: 0
+        ToPort: 65535
+        CidrIp: 0.0.0.0/0
+      VpcId:
+        Fn::ImportValue:
+          !Sub "${EnvironmentName}-VPCID"
+
+  WebAppLaunchConfig:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          apt-get update -y
+          apt-get install unzip awscli -y
+          apt-get install apache2 -y
+          systemctl start apache2.service
+          cd /var/www/html
+          aws s3 cp s3://udacity-demo-1/udacity.zip .
+          unzip -o udacity.zip
+      AssociatePublicIpAddress: false
+      IamInstanceProfile: !Ref EC2InstanceProfile
+      BlockDeviceMappings:
+      - DeviceName: /dev/sdk
+        Ebs:
+          VolumeSize: 10
+      ImageId: ami-06b263d6ceff0b3dd
+      InstanceType: t2.micro
+      KeyName: private-server-devops-key
+      LaunchConfigurationName: !Sub "${EnvironmentName} LaunchConfig"
+      SecurityGroups:
+      - Ref: WebServerSecgroup
+
+  WebAppGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AutoScalingGroupName: !Sub "${EnvironmentName}-AutoScaling Group"
+      LaunchConfigurationName: !Ref WebAppLaunchConfig
+      MaxSize: "10"
+      MinSize: "4"
+      TargetGroupARNs:
+      - Ref: WebAppTargetGroup
+      VPCZoneIdentifier:
+      - Fn::ImportValue:
+          !Sub ${EnvironmentName}-PRIV-NETS
+
+  WebAppLB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      SecurityGroups:
+      - Ref: LBSecgroup
+      Subnets:
+      - Fn::ImportValue: !Sub ${EnvironmentName}-PUB1-SN
+      - Fn::ImportValue: !Sub ${EnvironmentName}-PUB2-SN
+      Tags:
+      - Key: name
+        Value: !Sub "${EnvironmentName} Web Loadbalancer"
+
+  Listerner:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+      - Type: forward
+        TargetGroupArn: !Ref WebAppTargetGroup
+      LoadBalancerArn: !Ref WebAppLB
+      Port: 80
+      Protocol: HTTP
+
+  ALBListernerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions:
+      - Type: forward
+        TargetGroupArn: !Ref WebAppTargetGroup
+      Conditions:
+      - Field: path-pattern
+        Values: [/]
+      ListenerArn: !Ref Listerner
+      Priority: 1
+
+  WebAppTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 8
+      HealthyThresholdCount: 2
+      Port: 80
+      Protocol: HTTP
+      UnhealthyThresholdCount: 5
+      VpcId:
+        Fn::ImportValue:
+          Fn::Sub: "${EnvironmentName}-VPCID"
+
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: EC2InstanceProfile
+      Path: /
+      Roles:
+      - !Ref EC2InstanceRole
+
+  EC2InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: This role allows AmazonS3ReadOnlyAccess to any S3 bucket
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+              - ec2.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      MaxSessionDuration: 43200 #The maximum session duration (in seconds) that you want to set for the specified role. If you do not specify a value for this setting, the default maximum of one hour is applied. This setting can have a value from 1 hour to 12 hours.
+      Path: /
+      Policies:
+        - PolicyName: S3ReadOnlyAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action:
+              - s3:Get*
+              - s3:List*
+              Resource: "*"
