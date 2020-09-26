@@ -14,8 +14,25 @@ jobs:
               --stack-name networkinfra \
               --parameters file://network-parameters.json
 
+  create_servers:
+    docker:
+      - image: amazon/aws-cli
+    steps:
+      - checkout
+      - run:
+          name: Create Network resources
+          command: |
+            aws cloudformation create-stack \
+              --template-body file://servers.yml \
+              --stack-name servers \
+              --parameters file://servers-parameters.json
+
 workflows:
   my_workflow:
     jobs:
       - create_network_resources:
+          context: awscredentials
+      - create_servers:
+          requires:
+            - create_network_resources
           context: awscredentials
