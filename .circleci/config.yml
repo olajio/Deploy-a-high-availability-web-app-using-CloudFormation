@@ -1,0 +1,20 @@
+version: 2.1
+
+jobs:
+  create_network_resources:
+    docker:
+      - image: amazon/aws-cli
+    steps:
+      - checkout
+      - run:
+          name: Create Network resources
+          command: |
+            aws cloudformation deploy \
+              --template-file network.yml \
+              --stack-name network_infra \
+              --parameter-overrides network-parameters.json
+
+workflows:
+  my_workflow:
+    jobs:
+      - create_network_resources
