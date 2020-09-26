@@ -12,7 +12,8 @@ jobs:
             aws cloudformation create-stack \
               --template-body file://network.yml \
               --stack-name networkinfra \
-              --parameters file://network-parameters.json
+              --parameters file://network-parameters.json \
+              --capabilities "CAPABILITY_IAM" "CAPABILITY_NAMED_IAM"
 
   create_servers:
     docker:
@@ -25,7 +26,8 @@ jobs:
             aws cloudformation create-stack \
               --template-body file://servers.yml \
               --stack-name servers \
-              --parameters file://servers-parameters.json
+              --parameters file://servers-parameters.json \
+              --capabilities "CAPABILITY_IAM" "CAPABILITY_NAMED_IAM"
 
 workflows:
   my_workflow:
