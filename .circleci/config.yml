@@ -35,8 +35,7 @@ workflows:
       - create_network_resources:
           context: awscredentials
       - create_servers:
-#          requires:
-#            - create_network_resources
           context: awscredentials
           type: approval
-          
+#          requires:
+#            - create_network_resources
