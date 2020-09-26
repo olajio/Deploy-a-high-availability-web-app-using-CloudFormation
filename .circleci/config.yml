@@ -17,4 +17,5 @@ jobs:
 workflows:
   my_workflow:
     jobs:
-      - create_network_resources
+      - create_network_resources:
+          context: awscredentials
