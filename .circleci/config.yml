@@ -10,9 +10,9 @@ jobs:
           name: Create Network resources
           command: |
             aws cloudformation create-stack \
-              --template-body network.yml \
+              --template-body file://network.yml \
               --stack-name network_infra \
-              --parameters network-parameters.json
+              --parameters file://network-parameters.json
 
 workflows:
   my_workflow:
