@@ -14,6 +14,7 @@ jobs:
               --stack-name networkinfra \
               --parameters file://network-parameters.json \
               --capabilities "CAPABILITY_IAM" "CAPABILITY_NAMED_IAM"
+            sleep 600
 
   create_servers:
     docker:
@@ -36,6 +37,5 @@ workflows:
           context: awscredentials
       - create_servers:
           context: awscredentials
-          type: approval
-#          requires:
-#            - create_network_resources
+          requires:
+            - create_network_resources
