@@ -14,7 +14,7 @@ jobs:
               --stack-name networkinfra \
               --parameters file://network-parameters.json \
               --capabilities "CAPABILITY_IAM" "CAPABILITY_NAMED_IAM"
-            sleep 600
+            sleep 360
 
   create_servers:
     docker:
